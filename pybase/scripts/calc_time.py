@@ -26,8 +26,11 @@ def get_date(name=''):
     return datetime.date(int(year),int(month),int(day))
 
 
+basecamp_url = raw_input('BaseCamp URL.')
+username = raw_input('BaseCamp UserName:')
+password = raw_input('BaseCamp PassWord:')
 
-conn = Basecamp('http://erdosmiller.basecamphq.com','erdosmiller','mosfet')
+conn = Basecamp(basecamp_url,username,password)
 
 our_people = people_keys(conn)
 our_projects = project_keys(conn)
