@@ -7,10 +7,11 @@
 
 import base64
 import urllib2
-import datetime
+import  mx.DateTime
 from elementtree.ElementTree import fromstring
 
 #this is where we define the entire API! In a dict!
+#this is where we define all available methods
 url_mapping = {'get_projects':'/projects.xml', #projects
                'get_project':'/projects/%d.xml',
                'who_am_i':'/me.xml', #people
@@ -68,11 +69,10 @@ class pythonic_objectify(object):
                     value = bool(value)
                 elif kind == 'date':
                     year, month, day = value.split('-')
-                    value = datetime.date(int(year),int(month),int(day))
+                    value = mx.DateTime.DateTime(int(year),int(month),int(day))
                 
             #apply it to it's parent
             setattr(self._parent,tag,value)
-        
         
     def __repr__(self):
         return self._tree.tag
@@ -81,7 +81,10 @@ class pythonic_objectify(object):
         return self._children.__iter__()
 
     def __getitem__(self,index):
-        return self._children[index]
+        try:
+            return self._children[index]
+        except AttributeError:
+            return getattr(self,index)
 
     def get_children(self):
         return self._children
@@ -92,9 +95,9 @@ class pythonic_objectify(object):
         
         
 
-class Basecamp(object):
-    
+class Basecamp(object):    
     def __init__(self, baseURL, username, password):
+        """Basic setup."""
         self.baseURL = baseURL
         if self.baseURL[-1] == '/':
             self.baseURL = self.baseURL[:-1]
@@ -112,6 +115,7 @@ class Basecamp(object):
         self.opener.addheaders = self.headers
 
     def _request(self, path, data=None):
+        """Make an http request."""
         if hasattr(data, 'findall'):
             data = ET.tostring(data)
 
@@ -125,4 +129,35 @@ class Basecamp(object):
                 return pythonic_objectify(self._request(url_mapping[index] % args))
             return temp_func
         else:
-            return self.__dict__[index]
+            return getattr(self,index)
+
+    def people_id_map(self,company_id=None):
+        """Return a dictionary for everyone in BaseCamp."""
+        keys = {}
+        
+        if company_id is None:
+            people = self.all_people()
+        else:
+            people = self.people_in_company(company_id)
+
+        for person in people:
+            keys[person.id] = person.first_name + ' ' + person.last_name
+        
+        return keys
+    
+    def project_id_map(self):
+        """Return a dictionary for all the projects in BaseCamp."""
+        keys = {}
+        for project in self.get_projects():
+            keys[project.id] = project.name
+
+        return keys
+
+if __name__ == '__main__':
+    from test_settings import *
+    
+    conn = Basecamp(bc_url,bc_user,bc_pwd)
+
+    projects = conn.project_id_map()
+
+    print projects
