@@ -5,10 +5,12 @@
 ### Function: Basecamp API Wrapper!
 ############
 
+import pdb
 import base64
 import urllib2
 import datetime
 from elementtree.ElementTree import fromstring, tostring
+import elementtree.ElementTree as ET
 
 from config import *
 
@@ -56,7 +58,7 @@ url_mapping = {'get_projects':'/projects.xml', #projects
                'get_list':'/todo_lists/%d.xml',
                #ToDo List Items
                'get_all_items':'/todo_lists/%d/todo_items.xml',
-               
+               'new_item':'/todo_lists/%d/todo_items/new.xml',
                }
 
 class pythonic_objectify(object):
@@ -157,15 +159,13 @@ class Basecamp(object):
     def _request(self, path, data=None):
         """Make an http request."""
         
+        #what is this line for?
         if hasattr(data, 'findall'):
             data = ET.tostring(data)
-        
+
         logger.debug('Requesting URL: %s' % self.baseURL + path)
 
-        
         req = urllib2.Request(url=self.baseURL + path, data=data)
-
-        
         
         return self.opener.open(req).read()
 
@@ -200,6 +200,39 @@ class Basecamp(object):
             keys[project.id] = project.name
 
         return keys
+    
+    def create_todo_item(self, list_id, content, party_id=None, notify=False):
+        """
+        This call lets you add an item to an existing list. The item is added
+        to the bottom of the list. If a person is responsible for the item,
+        give their id as the party_id value. If a company is responsible,
+        prefix their company id with a 'c' and use that as the party_id value.
+        If the item has a person as the responsible party, you can use the
+        notify key to indicate whether an email should be sent to that person
+        to tell them about the assignment.
+        """
+        path = '/todo_lists/%d/todo_items.xml' % list_id
+        req = ET.Element('todo-item')
+        ET.SubElement(req, 'content').text = str(content)
+        
+        due = ET.SubElement(req, 'due-at')
+        due.set('nil',str(True).lower())
+        due.set('type','datetime')
+        
+        notify_elem = ET.SubElement(req,'notify')
+        notify_elem.text = str(notify).lower()
+        notify_elem.set('type','boolean')
+        
+        party = ET.SubElement(req,'responsible_party')
+        
+        if party_id is not None:
+            ET.SubElement(req, 'responsible-party').text = str(party_id)
+            ET.SubElement(req, 'notify').text = str(bool(notify)).lower()
+        
+        #print self._request(path,req)
+        #pdb.set_trace()
+        return self._request(path,req)
+    
 
 if __name__ == '__main__':
     
@@ -221,5 +254,11 @@ if __name__ == '__main__':
         def testGetTDLS(self):
             tdls = self.conn.get_all_lists(bc_primary_project_id,ALL)
             assert tdls[0].id == bc_primary_tdl_id
+        def testCreateToDoItem(self):
+            print "Wtf?"
+            self.conn.create_todo_item(bc_primary_tdl_id,'Test From python!')
+        def testNewToDoListItem(self):
+            t = self.conn.new_item(bc_primary_tdl_id)
+            print tostring(t._tree)
         
     unittest.main()
