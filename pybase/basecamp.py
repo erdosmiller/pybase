@@ -9,6 +9,7 @@ import base64
 import urllib2
 import  mx.DateTime
 from elementtree.ElementTree import fromstring
+import pdb
 
 #this is where we define the entire API! In a dict!
 #this is where we define all available methods
@@ -31,7 +32,7 @@ url_mapping = {'get_projects':'/projects.xml', #projects
                'get_archived_messages_by_category':'/projects/%d/cat/%d/posts/archive.xml',
                'new_message':'/projects/%d/posts/new.xml',
                'edit_message':'/posts/%d/edit.xml',
-               'get_project_time':'/projects/%d/time_entries.xml',
+               #'get_project_time':'/projects/%d/time_entries.xml', #required special implementation
                'get_all_todo_entries':'/todo_items/%d/time_entries.xml',
                'get_entry':'/time_entries/%d.xml',
                }
@@ -120,8 +121,12 @@ class Basecamp(object):
             data = ET.tostring(data)
 
         req = urllib2.Request(url=self.baseURL + path, data=data)
-        return self.opener.open(req).read()
+        response = self.opener.open(req)
+        
+        data = response.read()
 
+        return data
+    
     def __getattr__(self,index):
         if index in url_mapping.keys():
             def temp_func(*args):
@@ -153,6 +158,35 @@ class Basecamp(object):
 
         return keys
 
+    def get_project_time(self,project_id,page=1,return_all=True):
+        """This method will return all time entries, if you'd like it to return the last 50 set return_all to false and select the page."""
+
+        print "Retrieving Page: %d" % page
+        time_entries = []
+
+        path = '/projects/%d/time_entries.xml?page=%d' % (project_id,page)
+        
+        req = urllib2.Request(url=self.baseURL + path, data=None)
+        
+        response = self.opener.open(req)
+        
+        data = response.read()
+
+        objects = pythonic_objectify(data)
+        
+        pages = int(response.headers['x-pages'])
+        page = int(response.headers['x-page'])
+
+        time_entries.extend(objects.data)
+
+        if page < pages:
+            time_entries.extend(self.get_project_time(project_id,page+1,return_all))
+
+        return time_entries
+                                
+                             
+            
+        
 if __name__ == '__main__':
     from test_settings import *
     
