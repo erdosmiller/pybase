@@ -8,11 +8,9 @@
 import pdb
 import base64
 import urllib2
-import  mx.DateTime
 import datetime
 from elementtree.ElementTree import fromstring, tostring
 import elementtree.ElementTree as ET
-import pdb
 
 from config import *
 
@@ -156,6 +154,7 @@ class Basecamp(object):
             ('Content-Type', 'application/xml'),
             ('Accept', 'application/xml'),
             ('Authorization', 'Basic %s' % self.encoded_auth_string), ]
+        
         self.opener.addheaders = self.headers
 
     def _request(self, path, data=None):
@@ -168,21 +167,24 @@ class Basecamp(object):
         logger.debug('Requesting URL: %s' % self.baseURL + path)
 
         req = urllib2.Request(url=self.baseURL + path, data=data)
+
+        req.add_header('Content-Type', 'application/xml') 
+        req.add_header('Accept', 'application/xml') 
+        req.add_header('Authorization', 'Basic %s' % self.encoded_auth_string)
+        
         response = self.opener.open(req)
         
-        data = response.read()
-
-        return data
+        return response
     
     def __getattr__(self,index):
         if index in url_mapping.keys():
             def temp_func(*args):
                 #print self._request(url_mapping[index] % args)
-                return pythonic_objectify(self._request(url_mapping[index] % args))
+                return pythonic_objectify(self._request(url_mapping[index] % args).read())
                 
             return temp_func
         else:
-            return getattr(self,index)
+            return self.__dict__[index]
 
     def people_id_map(self,company_id=None):
         """Return a dictionary for everyone in BaseCamp."""
@@ -226,34 +228,42 @@ class Basecamp(object):
     
     def create_todo_item(self, list_id, content, party_id=None, notify=False):
 
-        # path = '/todo_lists/%d/todo_items.xml' % list_id
-        # req = ET.Element('todo-item')
-        # ET.SubElement(req, 'content').text = str(content)
+        path = '/todo_lists/%d/todo_items.xml' % list_id
         
-        # due = ET.SubElement(req, 'due-at')
-        # due.set('nil',str(True).lower())
-        # due.set('type','datetime')
+        req = ET.Element('todo-item')
         
-        # notify_elem = ET.SubElement(req,'notify')
-        # notify_elem.text = str(notify).lower()
-        # notify_elem.set('type','boolean')
+        ET.SubElement(req, 'content').text = str(content)
         
-        # party = ET.SubElement(req,'responsible_party')
+        due = ET.SubElement(req, 'due-at')
+        due.set('nil',str(True).lower())
+        due.set('type','datetime')
         
-        # if party_id is not None:
-        #     ET.SubElement(req, 'responsible-party').text = str(party_id)
-        #     ET.SubElement(req, 'notify').text = str(bool(notify)).lower()
+        notify_elem = ET.SubElement(req,'notify')
+        notify_elem.text = str(notify).lower()
+        notify_elem.set('type','boolean')
         
-        # #print self._request(path,req)
-        # #pdb.set_trace()
-        # return self._request(path,req)
+        party = ET.SubElement(req,'responsible_party')
         
-        return self.old_create_todo_item(list_id,content,party_id,notify)
+        if party_id is not None:
+            ET.SubElement(req, 'responsible-party').text = str(party_id)
+            ET.SubElement(req, 'notify').text = str(bool(notify)).lower()
+        
+        #print self._request(path,req)
+        #pdb.set_trace()
+
+        response = self._request(path,req)
+
+        if response.code == 201:
+            return int(response.headers['location'].split('/')[-1])
+        else: 
+            return False
+        
+        #return self.old_create_todo_item(list_id,content,party_id,notify)
 
     def get_project_time(self,project_id,page=1,return_all=True):
         """This method will return all time entries, if you'd like it to return the last 50 set return_all to false and select the page."""
 
-        print "Retrieving Page: %d" % page
+        #print "Retrieving Page: %d" % page
         time_entries = []
 
         path = '/projects/%d/time_entries.xml?page=%d' % (project_id,page)
@@ -288,22 +298,29 @@ if __name__ == '__main__':
     class APITests(unittest.TestCase):
         def setUp(self):
             self.conn = Basecamp(bc_url,bc_user,bc_pwd)
+
         def tearDown(self):
             pass
+
         def testGetCompany(self):
             company = self.conn.get_company(bc_primary_company_id)
             assert company.id == bc_primary_company_id
+
         def testGetProjects(self):
             projects = self.conn.get_projects()
             assert projects[0].id == bc_primary_project_id
+
         def testGetTDLS(self):
             tdls = self.conn.get_all_lists(bc_primary_project_id,ALL)
-            assert tdls[0].id == bc_primary_tdl_id
+
+            assert bc_primary_tdl_id in [tdl.id for tdl in tdls]
+
         def testCreateToDoItem(self):
-            print "Wtf?"
-            self.conn.create_todo_item(bc_primary_tdl_id,'Test From python!')
-        def testNewToDoListItem(self):
+            new_id = self.conn.create_todo_item(bc_primary_tdl_id,'Test From python!')
+            
+            assert new_id > 0
+            
+        def testGetNewToDoListItem(self):
             t = self.conn.new_item(bc_primary_tdl_id)
-            print tostring(t._tree)
         
     unittest.main()
