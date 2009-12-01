@@ -5,14 +5,33 @@
 ### Function: Basecamp API Wrapper!
 ############
 
+import pdb
 import base64
 import urllib2
 import  mx.DateTime
-from elementtree.ElementTree import fromstring
+import datetime
+from elementtree.ElementTree import fromstring, tostring
+import elementtree.ElementTree as ET
 import pdb
 
+from config import *
+
+ALL = 'all'
+PENDING = 'pending'
+FINISHED = 'finished'
+
+tdls_status = [ALL,PENDING,FINISHED]
+
+tdl_status_lookup = {'all':ALL,
+              'pending':PENDING,
+              'finished':FINISHED,
+              ALL:'all',
+              PENDING:'pending',
+              FINISHED:'finished',
+}
+
 #this is where we define the entire API! In a dict!
-#this is where we define all available methods
+#this is where we define all READ methods
 url_mapping = {'get_projects':'/projects.xml', #projects
                'get_project':'/projects/%d.xml',
                'who_am_i':'/me.xml', #people
@@ -33,8 +52,15 @@ url_mapping = {'get_projects':'/projects.xml', #projects
                'new_message':'/projects/%d/posts/new.xml',
                'edit_message':'/posts/%d/edit.xml',
                #'get_project_time':'/projects/%d/time_entries.xml', #required special implementation
+               #TIME ENTRIES
                'get_all_todo_entries':'/todo_items/%d/time_entries.xml',
+               #TODO Lists
                'get_entry':'/time_entries/%d.xml',
+               'get_all_lists':'/projects/%d/todo_lists.xml?filter=%s',
+               'get_list':'/todo_lists/%d.xml',
+               #ToDo List Items
+               'get_all_items':'/todo_lists/%d/todo_items.xml',
+               'new_item':'/todo_lists/%d/todo_items/new.xml',
                }
 
 class pythonic_objectify(object):
@@ -67,16 +93,27 @@ class pythonic_objectify(object):
                 elif kind == 'float':
                     value = float(value)
                 elif kind == 'boolean':
-                    value = bool(value)
+                    if value == 'false':
+                        value = False
+                    elif value == 'true':
+                        value = True
+                    else:
+                        raise ValueError("I don't know how to handle this!")
                 elif kind == 'date':
                     year, month, day = value.split('-')
-                    value = mx.DateTime.DateTime(int(year),int(month),int(day))
+                    value = datetime.datetime(int(year),int(month),int(day))
                 
             #apply it to it's parent
             setattr(self._parent,tag,value)
         
     def __repr__(self):
-        return self._tree.tag
+        return '<%s>' % self._tree.tag
+
+    def tostring(self):
+        return tostring(self._tree)
+
+    def __len__(self):
+        return len(self._children)
 
     def __iter__(self):
         return self._children.__iter__()
@@ -89,6 +126,10 @@ class pythonic_objectify(object):
 
     def get_children(self):
         return self._children
+    
+    def __iter__(self):
+        return self._children.__iter__()
+        
 
     children = property(get_children)
     data = property(get_children)
@@ -102,6 +143,8 @@ class Basecamp(object):
         self.baseURL = baseURL
         if self.baseURL[-1] == '/':
             self.baseURL = self.baseURL[:-1]
+
+        logger.debug('Base URL: %s' % self.baseURL)
 
         self.opener = urllib2.build_opener()
 
@@ -117,8 +160,12 @@ class Basecamp(object):
 
     def _request(self, path, data=None):
         """Make an http request."""
+        
+        #what is this line for?
         if hasattr(data, 'findall'):
             data = ET.tostring(data)
+
+        logger.debug('Requesting URL: %s' % self.baseURL + path)
 
         req = urllib2.Request(url=self.baseURL + path, data=data)
         response = self.opener.open(req)
@@ -132,6 +179,7 @@ class Basecamp(object):
             def temp_func(*args):
                 #print self._request(url_mapping[index] % args)
                 return pythonic_objectify(self._request(url_mapping[index] % args))
+                
             return temp_func
         else:
             return getattr(self,index)
@@ -157,6 +205,39 @@ class Basecamp(object):
             keys[project.id] = project.name
 
         return keys
+    
+    def create_todo_item(self, list_id, content, party_id=None, notify=False):
+        """
+        This call lets you add an item to an existing list. The item is added
+        to the bottom of the list. If a person is responsible for the item,
+        give their id as the party_id value. If a company is responsible,
+        prefix their company id with a 'c' and use that as the party_id value.
+        If the item has a person as the responsible party, you can use the
+        notify key to indicate whether an email should be sent to that person
+        to tell them about the assignment.
+        """
+        path = '/todo_lists/%d/todo_items.xml' % list_id
+        req = ET.Element('todo-item')
+        ET.SubElement(req, 'content').text = str(content)
+        
+        due = ET.SubElement(req, 'due-at')
+        due.set('nil',str(True).lower())
+        due.set('type','datetime')
+        
+        notify_elem = ET.SubElement(req,'notify')
+        notify_elem.text = str(notify).lower()
+        notify_elem.set('type','boolean')
+        
+        party = ET.SubElement(req,'responsible_party')
+        
+        if party_id is not None:
+            ET.SubElement(req, 'responsible-party').text = str(party_id)
+            ET.SubElement(req, 'notify').text = str(bool(notify)).lower()
+        
+        #print self._request(path,req)
+        #pdb.set_trace()
+        return self._request(path,req)
+    
 
     def get_project_time(self,project_id,page=1,return_all=True):
         """This method will return all time entries, if you'd like it to return the last 50 set return_all to false and select the page."""
@@ -188,10 +269,30 @@ class Basecamp(object):
             
         
 if __name__ == '__main__':
+    
+    import unittest
+    
     from test_settings import *
     
-    conn = Basecamp(bc_url,bc_user,bc_pwd)
-
-    projects = conn.project_id_map()
-
-    print projects
+    class APITests(unittest.TestCase):
+        def setUp(self):
+            self.conn = Basecamp(bc_url,bc_user,bc_pwd)
+        def tearDown(self):
+            pass
+        def testGetCompany(self):
+            company = self.conn.get_company(bc_primary_company_id)
+            assert company.id == bc_primary_company_id
+        def testGetProjects(self):
+            projects = self.conn.get_projects()
+            assert projects[0].id == bc_primary_project_id
+        def testGetTDLS(self):
+            tdls = self.conn.get_all_lists(bc_primary_project_id,ALL)
+            assert tdls[0].id == bc_primary_tdl_id
+        def testCreateToDoItem(self):
+            print "Wtf?"
+            self.conn.create_todo_item(bc_primary_tdl_id,'Test From python!')
+        def testNewToDoListItem(self):
+            t = self.conn.new_item(bc_primary_tdl_id)
+            print tostring(t._tree)
+        
+    unittest.main()
