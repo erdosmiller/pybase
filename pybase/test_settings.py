@@ -1,4 +1,4 @@
-bc_url = 'https://pyapitest.basecamphq.com/'
+bc_url = 'http://pyapitest.basecamphq.com/'
 bc_user = 'APITest'
 bc_pwd = 'pass123'
 bc_primary_company_id = 1627885

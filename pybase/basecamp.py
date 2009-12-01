@@ -201,7 +201,7 @@ class Basecamp(object):
 
         return keys
     
-    def create_todo_item(self, list_id, content, party_id=None, notify=False):
+    def old_create_todo_item(self, list_id, content, party_id=None, notify=False):
         """
         This call lets you add an item to an existing list. The item is added
         to the bottom of the list. If a person is responsible for the item,
@@ -211,28 +211,39 @@ class Basecamp(object):
         notify key to indicate whether an email should be sent to that person
         to tell them about the assignment.
         """
-        path = '/todo_lists/%d/todo_items.xml' % list_id
-        req = ET.Element('todo-item')
+        path = '/todos/create_item/%d' % list_id
+        req = ET.Element('request')
         ET.SubElement(req, 'content').text = str(content)
-        
-        due = ET.SubElement(req, 'due-at')
-        due.set('nil',str(True).lower())
-        due.set('type','datetime')
-        
-        notify_elem = ET.SubElement(req,'notify')
-        notify_elem.text = str(notify).lower()
-        notify_elem.set('type','boolean')
-        
-        party = ET.SubElement(req,'responsible_party')
-        
         if party_id is not None:
             ET.SubElement(req, 'responsible-party').text = str(party_id)
             ET.SubElement(req, 'notify').text = str(bool(notify)).lower()
-        
-        #print self._request(path,req)
-        #pdb.set_trace()
-        return self._request(path,req)
+        return self._request(path, req)
     
+    def create_todo_item(self, list_id, content, party_id=None, notify=False):
+
+        # path = '/todo_lists/%d/todo_items.xml' % list_id
+        # req = ET.Element('todo-item')
+        # ET.SubElement(req, 'content').text = str(content)
+        
+        # due = ET.SubElement(req, 'due-at')
+        # due.set('nil',str(True).lower())
+        # due.set('type','datetime')
+        
+        # notify_elem = ET.SubElement(req,'notify')
+        # notify_elem.text = str(notify).lower()
+        # notify_elem.set('type','boolean')
+        
+        # party = ET.SubElement(req,'responsible_party')
+        
+        # if party_id is not None:
+        #     ET.SubElement(req, 'responsible-party').text = str(party_id)
+        #     ET.SubElement(req, 'notify').text = str(bool(notify)).lower()
+        
+        # #print self._request(path,req)
+        # #pdb.set_trace()
+        # return self._request(path,req)
+        
+        return self.old_create_todo_item(list_id,content,party_id,notify)
 
 if __name__ == '__main__':
     
